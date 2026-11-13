@@ -1,0 +1,87 @@
+[project]
+name = "asea-backend"
+version = "0.1.0"
+description = "MCP-based autonomous software engineering agent: API, agent, and MCP server"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162,<1",
+    "uvicorn[standard]>=0.54,<1",
+    "pydantic>=2.14,<3",
+    "pydantic-settings>=2.16,<3",
+    "sqlalchemy[asyncio]>=2.1,<2.2",
+    "alembic>=1.20,<2",
+    "psycopg[binary,pool]>=3.3,<4",
+    "langgraph>=1.2,<2",
+    "langgraph-checkpoint-postgres>=3.2,<4",
+    "langchain>=1.5,<2",
+    "langchain-openai>=1.7,<2",
+    "langchain-google-genai>=4.5,<5",
+    "mcp>=2.3,<3",
+    "httpx>=0.28,<1",
+    "structlog>=26.1",
+    "pyjwt>=2.15,<3",
+    "argon2-cffi>=25.1",
+    "cryptography>=50",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2,<10",
+    "pytest-asyncio>=1.5,<2",
+    "ruff>=0.17",
+    "mypy>=2.4",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "docker: needs a reachable Docker daemon and the sandbox image",
+]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S", "ASYNC", "SIM", "RUF"]
+ignore = [
+    "S101",   # assert is fine in tests and for narrowing
+    "S603",   # subprocess calls are argv lists built from validated input
+    "S607",   # git and docker are resolved from PATH on purpose
+    "B008",   # FastAPI Depends in defaults
+    "RUF012",
+    "E501",   # the formatter owns line length; long strings and tables stay readable
+    "ASYNC109",  # explicit timeout parameters are part of these interfaces
+    "ASYNC230",  # small local file reads in async code are acceptable here
+    "ASYNC240",
+    "SIM102",
+    "SIM108",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S108", "ASYNC"]
+"app/evaluation/fixtures.py" = ["S105", "S106", "E501"]
+"app/api/routes/auth.py" = ["S106"]  # token_type="access" is a label, not a password
+"app/schemas/api.py" = ["S105"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+exclude = ["alembic/", "tests/"]

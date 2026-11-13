@@ -1,0 +1,82 @@
+name: asea
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-asea}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-asea}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-asea}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-asea}
+      REPOS_ALLOWED_ROOTS: /repos
+      # Sandbox containers are started through the host Docker daemon, which needs host paths.
+      SANDBOX_PATH_MAP: /repos=${REPOS_HOST_DIR:-/nonexistent}
+    # Run as the owner of the repositories directory so file ownership stays intact, with the
+    # Docker socket's group so sandbox containers can be started.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-999}"
+    volumes:
+      - ${REPOS_HOST_DIR:-/nonexistent}:/repos
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=3).status == 200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    profiles: [app]
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    profiles: [app]
+
+  # Builds the image used for sandboxed commands; it does not stay running.
+  sandbox-image:
+    build:
+      context: ./docker
+      dockerfile: sandbox.Dockerfile
+    image: ${SANDBOX_IMAGE:-asea-sandbox:latest}
+    command: ["true"]
+    profiles: [build]
+
+volumes:
+  pgdata:
